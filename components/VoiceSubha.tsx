@@ -11,6 +11,7 @@ interface SpeechRecognition extends EventTarget {
   stop(): void;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
   onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
 }
 
 interface SpeechRecognitionEvent {
@@ -36,6 +37,22 @@ export default function VoiceSubha() {
     return !!SpeechRecognition;
   });
   const [transcript, setTranscript] = useState("");
+
+  useEffect(() => {
+  if (!recognitionRef.current) return;
+
+  const recognition = recognitionRef.current;
+  recognition.onend = () => {
+    if (listening) {
+      try {
+        recognition.start(); // أعد تشغيل التسجيل
+      } catch (e) {
+        console.warn("Failed to restart recognition", e);
+      }
+    }
+  };
+}, [listening]);
+
 
   useEffect(() => {
     try { localStorage.setItem(DEFAULT_KEY, String(count)); } catch {}
