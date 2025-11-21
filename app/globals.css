@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #16a34a;
+  --color-secondary: #dcfce7;
+  --font-sans: var(--font-outfit);
+}
+
+body {
+  font-family: var(--font-outfit), sans-serif;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
