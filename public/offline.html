@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>السبحة الصوتية - غير متصل</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #064e3b 0%, #115e59 50%, #0e7490 100%);
+      color: white;
+      padding: 20px;
+    }
+    
+    .container {
+      text-align: center;
+      max-width: 400px;
+    }
+    
+    .icon {
+      font-size: 80px;
+      margin-bottom: 24px;
+    }
+    
+    h1 {
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+    
+    p {
+      font-size: 16px;
+      opacity: 0.8;
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+    
+    .retry-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 12px 32px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .retry-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .dhikr-offline {
+      margin-top: 40px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+    }
+    
+    .dhikr-offline h2 {
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    
+    .dhikr-text {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .counter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    
+    .counter-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .counter-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .counter-value {
+      font-size: 48px;
+      font-weight: bold;
+      min-width: 80px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>أنت غير متصل بالإنترنت</h1>
+    <p>
+      التعرف على الصوت يحتاج اتصال بالإنترنت.
+      يمكنك استخدام العداد اليدوي أدناه حتى يعود الاتصال.
+    </p>
+    <button class="retry-btn" onclick="window.location.reload()">
+      🔄 إعادة المحاولة
+    </button>
+    
+    <div class="dhikr-offline">
+      <h2>📿 عداد يدوي</h2>
+      <div class="dhikr-text">سبحان الله</div>
+      <div class="counter">
+        <button class="counter-btn" onclick="updateCount(-1)">−</button>
+        <div class="counter-value" id="count">0</div>
+        <button class="counter-btn" onclick="updateCount(1)">+</button>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let count = parseInt(localStorage.getItem('offline_count') || '0');
+    document.getElementById('count').textContent = count;
+    
+    function updateCount(delta) {
+      count = Math.max(0, count + delta);
+      document.getElementById('count').textContent = count;
+      localStorage.setItem('offline_count', count.toString());
+      
+      // Vibrate on tap
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }
+    
+    // Listen for online event
+    window.addEventListener('online', () => {
+      window.location.reload();
+    });
+  </script>
+</body>
+</html>

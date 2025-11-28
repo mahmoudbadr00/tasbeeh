@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#064e3b;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#115e59;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0e7490;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bead" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34d399;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  
+  <!-- Prayer beads circle -->
+  <g transform="translate(256, 256)">
+    <!-- Main circle of beads -->
+    <circle cx="0" cy="-120" r="24" fill="url(#bead)"/>
+    <circle cx="60" cy="-103.9" r="24" fill="url(#bead)"/>
+    <circle cx="103.9" cy="-60" r="24" fill="url(#bead)"/>
+    <circle cx="120" cy="0" r="24" fill="url(#bead)"/>
+    <circle cx="103.9" cy="60" r="24" fill="url(#bead)"/>
+    <circle cx="60" cy="103.9" r="24" fill="url(#bead)"/>
+    <circle cx="0" cy="120" r="24" fill="url(#bead)"/>
+    <circle cx="-60" cy="103.9" r="24" fill="url(#bead)"/>
+    <circle cx="-103.9" cy="60" r="24" fill="url(#bead)"/>
+    <circle cx="-120" cy="0" r="24" fill="url(#bead)"/>
+    <circle cx="-103.9" cy="-60" r="24" fill="url(#bead)"/>
+    <circle cx="-60" cy="-103.9" r="24" fill="url(#bead)"/>
+    
+    <!-- Center tassel -->
+    <ellipse cx="0" cy="170" rx="16" ry="24" fill="#fbbf24"/>
+    <rect x="-4" y="120" width="8" height="55" fill="#fbbf24"/>
+    
+    <!-- String connecting beads -->
+    <circle cx="0" cy="0" r="100" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>
+  </g>
+  
+  <!-- Microphone icon at bottom -->
+  <g transform="translate(256, 400)">
+    <rect x="-20" y="-40" width="40" height="60" rx="20" fill="white" opacity="0.9"/>
+    <path d="M-30 0 Q-30 30 0 35 Q30 30 30 0" fill="none" stroke="white" stroke-width="6" opacity="0.9"/>
+    <rect x="-3" y="35" width="6" height="20" fill="white" opacity="0.9"/>
+    <rect x="-15" y="55" width="30" height="6" rx="3" fill="white" opacity="0.9"/>
+  </g>
+</svg>
