@@ -1,1407 +1,3 @@
-// /* eslint-disable @typescript-eslint/no-explicit-any */
-// "use client";
-
-// import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-// import "@/styles/voice-subha.css"
-
-// // ============================================================================
-// // Types & Interfaces
-// // ============================================================================
-
-// interface SpeechRecognition extends EventTarget {
-//   lang: string;
-//   continuous: boolean;
-//   interimResults: boolean;
-//   maxAlternatives: number;
-//   start(): void;
-//   stop(): void;
-//   abort(): void;
-//   onresult: ((event: SpeechRecognitionEvent) => void) | null;
-//   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-//   onend: (() => void) | null;
-//   onstart: (() => void) | null;
-//   onspeechstart: (() => void) | null;
-//   onspeechend: (() => void) | null;
-//   onaudiostart: (() => void) | null;
-//   onaudioend: (() => void) | null;
-// }
-
-// interface SpeechRecognitionEvent {
-//   resultIndex: number;
-//   results: SpeechRecognitionResultList;
-// }
-
-// interface SpeechRecognitionResultList {
-//   length: number;
-//   item(index: number): SpeechRecognitionResult;
-//   [index: number]: SpeechRecognitionResult;
-// }
-
-// interface SpeechRecognitionResult {
-//   isFinal: boolean;
-//   length: number;
-//   item(index: number): SpeechRecognitionAlternative;
-//   [index: number]: SpeechRecognitionAlternative;
-// }
-
-// interface SpeechRecognitionAlternative {
-//   transcript: string;
-//   confidence: number;
-// }
-
-// interface SpeechRecognitionErrorEvent extends Event {
-//   error: string;
-//   message: string;
-// }
-
-// interface DhikrItem {
-//   id: string;
-//   arabic: string;
-//   transliteration?: string;
-//   meaning?: string;
-//   targetCount?: number;
-//   category: "tasbih" | "istighfar" | "salawat" | "custom";
-// }
-
-// interface SessionRecord {
-//   id: string;
-//   date: string;
-//   dhikrId: string;
-//   dhikrText: string;
-//   count: number;
-//   duration: number;
-// }
-
-// interface Stats {
-//   totalCount: number;
-//   todayCount: number;
-//   streak: number;
-//   lastActiveDate: string;
-//   sessions: SessionRecord[];
-// }
-
-// type RecognitionStatus =
-//   | "idle"
-//   | "starting"
-//   | "listening"
-//   | "processing"
-//   | "error"
-//   | "paused";
-
-// // ============================================================================
-// // Constants
-// // ============================================================================
-
-// const STORAGE_KEYS = {
-//   STATS: "voice_subha_stats_v2",
-//   SETTINGS: "voice_subha_settings_v1",
-// } as const;
-
-// const DEFAULT_DHIKR_LIST: DhikrItem[] = [
-//   {
-//     id: "subhanallah",
-//     arabic: "سبحان الله",
-//     transliteration: "Subhan Allah",
-//     meaning: "Glory be to Allah",
-//     targetCount: 33,
-//     category: "tasbih",
-//   },
-//   {
-//     id: "alhamdulillah",
-//     arabic: "الحمد لله",
-//     transliteration: "Alhamdulillah",
-//     meaning: "Praise be to Allah",
-//     targetCount: 33,
-//     category: "tasbih",
-//   },
-//   {
-//     id: "allahuakbar",
-//     arabic: "الله أكبر",
-//     transliteration: "Allahu Akbar",
-//     meaning: "Allah is the Greatest",
-//     targetCount: 33,
-//     category: "tasbih",
-//   },
-//   {
-//     id: "istighfar",
-//     arabic: "استغفر الله العظيم واتوب اليه",
-//     transliteration: "Astaghfirullah al-Azim wa atubu ilayh",
-//     meaning: "I seek forgiveness from Allah",
-//     targetCount: 100,
-//     category: "istighfar",
-//   },
-//   {
-//     id: "salawat",
-//     arabic: "اللهم صل وسلم وبارك على سيدنا محمد وعلى اله وصحبه وسلم",
-//     transliteration: "Allahumma salli wa sallim ala Sayyidina Muhammad",
-//     meaning: "O Allah, send blessings upon our Master Muhammad",
-//     targetCount: 100,
-//     category: "salawat",
-//   },
-//   {
-//     id: "lailaha",
-//     arabic: "لا اله الا الله",
-//     transliteration: "La ilaha illa Allah",
-//     meaning: "There is no god but Allah",
-//     targetCount: 100,
-//     category: "tasbih",
-//   },
-//   {
-//     id: "hawqala",
-//     arabic: "لا حول ولا قوة الا بالله",
-//     transliteration: "La hawla wa la quwwata illa billah",
-//     meaning: "There is no power except with Allah",
-//     targetCount: 100,
-//     category: "tasbih",
-//   },
-// ];
-
-// const RECOGNITION_CONFIG = {
-//   RESTART_DELAY: 100,
-//   MAX_RESTART_ATTEMPTS: 5,
-//   RESTART_BACKOFF_MS: 1000,
-// } as const;
-
-// // ============================================================================
-// // Utility Functions
-// // ============================================================================
-
-// function normalizeArabic(text: string): string {
-//   return text
-//     .replace(/[ًٌٍَُِّْـ]/g, "")
-//     .replace(/[إأآا]/g, "ا")
-//     .replace(/ى/g, "ي")
-//     .replace(/ؤ/g, "و")
-//     .replace(/ئ/g, "ي")
-//     .replace(/ة/g, "ه")
-//     .replace(/[.,!?؛؟"'()«»،]/g, " ")
-//     .replace(/\s+/g, " ")
-//     .trim()
-//     .toLowerCase();
-// }
-
-// function countOccurrences(text: string, target: string): number {
-//   if (!target || !text) return 0;
-
-//   const normalizedText = normalizeArabic(text);
-//   const normalizedTarget = normalizeArabic(target);
-
-//   let count = 0;
-//   let pos = 0;
-//   while (true) {
-//     const index = normalizedText.indexOf(normalizedTarget, pos);
-//     if (index === -1) break;
-//     count++;
-//     pos = index + 1;
-//   }
-
-//   if (count === 0) {
-//     const similarity = calculateSimilarity(normalizedText, normalizedTarget);
-//     if (similarity > 0.7) count = 1;
-//   }
-
-//   return count;
-// }
-
-// function calculateSimilarity(str1: string, str2: string): number {
-//   const words1 = str1.split(" ").filter(Boolean);
-//   const words2 = str2.split(" ").filter(Boolean);
-//   if (words2.length === 0) return 0;
-
-//   let matches = 0;
-//   for (const word of words2) {
-//     if (words1.some((w) => w.includes(word) || word.includes(w))) {
-//       matches++;
-//     }
-//   }
-//   return matches / words2.length;
-// }
-
-// function formatDuration(seconds: number): string {
-//   const mins = Math.floor(seconds / 60);
-//   const secs = seconds % 60;
-//   return mins + ":" + secs.toString().padStart(2, "0");
-// }
-
-// function generateId(): string {
-//   return Date.now().toString(36) + Math.random().toString(36).substr(2);
-// }
-
-// function getToday(): string {
-//   return new Date().toISOString().split("T")[0];
-// }
-
-// function isSameDay(date1: string, date2: string): boolean {
-//   return date1.split("T")[0] === date2.split("T")[0];
-// }
-
-// function isYesterday(dateStr: string): boolean {
-//   const yesterday = new Date();
-//   yesterday.setDate(yesterday.getDate() - 1);
-//   return dateStr === yesterday.toISOString().split("T")[0];
-// }
-
-// // ============================================================================
-// // Custom Hooks
-// // ============================================================================
-
-// function useLocalStorage<T>(
-//   key: string,
-//   initialValue: T
-// ): [T, (value: T | ((prev: T) => T)) => void, boolean] {
-//   const [storedValue, setStoredValue] = useState<T>(initialValue);
-//   const [isHydrated, setIsHydrated] = useState(false);
-
-//   useEffect(() => {
-//     try {
-//       const item = localStorage.getItem(key);
-//       if (item) {
-//         // eslint-disable-next-line react-hooks/set-state-in-effect
-//         setStoredValue(JSON.parse(item));
-//       }
-//     } catch (error) {
-//       console.warn("Error reading localStorage:", error);
-//     }
-//     setIsHydrated(true);
-//   }, [key]);
-
-//   const setValue = useCallback(
-//     (value: T | ((prev: T) => T)) => {
-//       setStoredValue((prev) => {
-//         const newValue = value instanceof Function ? value(prev) : value;
-//         try {
-//           localStorage.setItem(key, JSON.stringify(newValue));
-//         } catch (error) {
-//           console.warn("Error setting localStorage:", error);
-//         }
-//         return newValue;
-//       });
-//     },
-//     [key]
-//   );
-
-//   return [isHydrated ? storedValue : initialValue, setValue, isHydrated];
-// }
-
-// function useWakeLock() {
-//   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-
-//   const requestWakeLock = useCallback(async () => {
-//     if ("wakeLock" in navigator) {
-//       try {
-//         wakeLockRef.current = await (navigator as any).wakeLock.request(
-//           "screen"
-//         );
-//       } catch (err) {
-//         console.warn("Wake Lock failed:", err);
-//       }
-//     }
-//   }, []);
-
-//   const releaseWakeLock = useCallback(() => {
-//     if (wakeLockRef.current) {
-//       wakeLockRef.current.release();
-//       wakeLockRef.current = null;
-//     }
-//   }, []);
-
-//   useEffect(() => {
-//     const handleVisibility = async () => {
-//       if (
-//         document.visibilityState === "visible" &&
-//         wakeLockRef.current === null
-//       ) {
-//         await requestWakeLock();
-//       }
-//     };
-
-//     document.addEventListener("visibilitychange", handleVisibility);
-//     return () => {
-//       document.removeEventListener("visibilitychange", handleVisibility);
-//       releaseWakeLock();
-//     };
-//   }, [requestWakeLock, releaseWakeLock]);
-
-//   return { requestWakeLock, releaseWakeLock };
-// }
-
-// function useSpeechRecognition(
-//   onResult: (transcript: string, confidence: number) => void,
-//   language: string = "ar-EG"
-// ) {
-//   const [status, setStatus] = useState<RecognitionStatus>("idle");
-//   const [error, setError] = useState<string | null>(null);
-//   const [interimTranscript, setInterimTranscript] = useState("");
-
-//   const recognitionRef = useRef<SpeechRecognition | null>(null);
-//   const isListeningRef = useRef(false);
-//   const restartAttemptsRef = useRef(0);
-//   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-//   // IMPORTANT: Use ref for callback to always have the latest version
-//   const onResultRef = useRef(onResult);
-//   onResultRef.current = onResult;
-
-//   const supported = useMemo(() => {
-//     if (typeof window === "undefined") return false;
-//     return !!(
-//       (window as any).SpeechRecognition ||
-//       (window as any).webkitSpeechRecognition
-//     );
-//   }, []);
-
-//   const cleanup = useCallback(() => {
-//     if (restartTimeoutRef.current) {
-//       clearTimeout(restartTimeoutRef.current);
-//       restartTimeoutRef.current = null;
-//     }
-//   }, []);
-
-//   const createRecognition = useCallback(() => {
-//     if (typeof window === "undefined") return null;
-
-//     const SpeechRecognitionAPI =
-//       (window as any).SpeechRecognition ||
-//       (window as any).webkitSpeechRecognition;
-
-//     if (!SpeechRecognitionAPI) return null;
-
-//     const recognition: SpeechRecognition = new SpeechRecognitionAPI();
-//     recognition.lang = language;
-//     recognition.continuous = true;
-//     recognition.interimResults = true;
-//     recognition.maxAlternatives = 3;
-
-//     return recognition;
-//   }, [language]);
-
-//   const scheduleRestart = useCallback(() => {
-//     if (!isListeningRef.current) return;
-
-//     if (restartAttemptsRef.current >= RECOGNITION_CONFIG.MAX_RESTART_ATTEMPTS) {
-//       setError("فشل في إعادة تشغيل التعرف على الصوت. اضغط لإعادة المحاولة.");
-//       setStatus("error");
-//       restartAttemptsRef.current = 0;
-//       return;
-//     }
-
-//     const delay =
-//       RECOGNITION_CONFIG.RESTART_DELAY +
-//       restartAttemptsRef.current * RECOGNITION_CONFIG.RESTART_BACKOFF_MS;
-
-//     restartTimeoutRef.current = setTimeout(() => {
-//       if (isListeningRef.current && recognitionRef.current) {
-//         try {
-//           recognitionRef.current.start();
-//           restartAttemptsRef.current++;
-//         } catch (e) {
-//           console.warn("Restart failed:", e);
-//           scheduleRestart();
-//         }
-//       }
-//     }, delay);
-//   }, []);
-
-//   const setupRecognition = useCallback(() => {
-//     const recognition = createRecognition();
-//     if (!recognition) return;
-
-//     recognition.onstart = () => {
-//       setStatus("listening");
-//       setError(null);
-//       restartAttemptsRef.current = 0;
-//     };
-
-//     recognition.onspeechstart = () => {
-//       setStatus("processing");
-//     };
-
-//     recognition.onspeechend = () => {
-//       if (isListeningRef.current) {
-//         setStatus("listening");
-//       }
-//     };
-
-//     recognition.onresult = (event: SpeechRecognitionEvent) => {
-//       let interimText = "";
-
-//       for (let i = event.resultIndex; i < event.results.length; i++) {
-//         const result = event.results[i];
-//         const transcript = result[0].transcript;
-
-//         if (result.isFinal) {
-//           // IMPORTANT: Use ref to always call the latest callback
-//           onResultRef.current(transcript, result[0].confidence);
-//         } else {
-//           interimText += transcript;
-//         }
-//       }
-
-//       setInterimTranscript(interimText);
-//     };
-
-//     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-//       console.error("Speech error:", event.error);
-
-//       switch (event.error) {
-//         case "network":
-//           setError("خطأ في الشبكة. تحقق من اتصالك بالإنترنت.");
-//           break;
-//         case "not-allowed":
-//         case "service-not-allowed":
-//           setError("لم يتم السماح بالوصول للميكروفون.");
-//           setStatus("error");
-//           isListeningRef.current = false;
-//           return;
-//         case "no-speech":
-//           if (isListeningRef.current) scheduleRestart();
-//           return;
-//         case "aborted":
-//           return;
-//         case "audio-capture":
-//           setError("لا يمكن الوصول للميكروفون.");
-//           break;
-//         default:
-//           setError("خطأ: " + event.error);
-//       }
-
-//       if (isListeningRef.current && event.error !== "aborted") {
-//         scheduleRestart();
-//       }
-//     };
-
-//     recognition.onend = () => {
-//       setInterimTranscript("");
-
-//       if (isListeningRef.current) {
-//         setStatus("starting");
-//         scheduleRestart();
-//       } else {
-//         setStatus("idle");
-//       }
-//     };
-
-//     recognitionRef.current = recognition;
-//   }, [createRecognition, scheduleRestart]);
-
-//   const start = useCallback(() => {
-//     if (!supported) {
-//       setError("المتصفح لا يدعم التعرف على الصوت");
-//       return;
-//     }
-
-//     cleanup();
-//     isListeningRef.current = true;
-//     restartAttemptsRef.current = 0;
-
-//     if (!recognitionRef.current) {
-//       setupRecognition();
-//     }
-
-//     if (recognitionRef.current) {
-//       try {
-//         setStatus("starting");
-//         recognitionRef.current.start();
-//       } catch (e: any) {
-//         if (e.name !== "InvalidStateError") {
-//           console.error("Start failed:", e);
-//           setError("فشل في بدء التعرف على الصوت");
-//         }
-//       }
-//     }
-//   }, [supported, cleanup, setupRecognition]);
-
-//   const stop = useCallback(() => {
-//     isListeningRef.current = false;
-//     cleanup();
-
-//     if (recognitionRef.current) {
-//       try {
-//         recognitionRef.current.stop();
-//       } catch (e) {
-//         console.warn("Stop error:", e);
-//       }
-//     }
-
-//     setStatus("idle");
-//     setInterimTranscript("");
-//   }, [cleanup]);
-
-//   const restart = useCallback(() => {
-//     stop();
-//     setTimeout(start, 500);
-//   }, [stop, start]);
-
-//   useEffect(() => {
-//     return () => {
-//       isListeningRef.current = false;
-//       cleanup();
-//       if (recognitionRef.current) {
-//         try {
-//           recognitionRef.current.abort();
-//         } catch (e) {
-//           // Ignore
-//         }
-//       }
-//     };
-//   }, [cleanup]);
-
-//   useEffect(() => {
-//     const handleVisibility = () => {
-//       if (document.visibilityState === "visible" && isListeningRef.current) {
-//         if (status !== "listening" && status !== "processing") {
-//           restart();
-//         }
-//       }
-//     };
-
-//     document.addEventListener("visibilitychange", handleVisibility);
-//     return () => {
-//       document.removeEventListener("visibilitychange", handleVisibility);
-//     };
-//   }, [status, restart]);
-
-//   useEffect(() => {
-//     if (recognitionRef.current) {
-//       const wasListening = isListeningRef.current;
-//       stop();
-//       recognitionRef.current = null;
-//       setupRecognition();
-//       if (wasListening) {
-//         setTimeout(start, 100);
-//       }
-//     }
-//     // eslint-disable-next-line react-hooks/exhaustive-deps
-//   }, [language]);
-
-//   return {
-//     supported,
-//     status,
-//     error,
-//     interimTranscript,
-//     isListening: status === "listening" || status === "processing",
-//     start,
-//     stop,
-//     restart,
-//     clearError: () => setError(null),
-//   };
-// }
-
-// // ============================================================================
-// // Sub Components
-// // ============================================================================
-
-// function StatusIndicator({ status }: { status: RecognitionStatus }) {
-//   const config: Record<
-//     RecognitionStatus,
-//     { color: string; text: string; pulse: boolean }
-//   > = {
-//     idle: { color: "bg-gray-400", text: "متوقف", pulse: false },
-//     starting: { color: "bg-yellow-400", text: "جاري البدء...", pulse: true },
-//     listening: { color: "bg-green-400", text: "يستمع", pulse: true },
-//     processing: { color: "bg-blue-400", text: "يعالج الكلام", pulse: true },
-//     error: { color: "bg-red-400", text: "خطأ", pulse: false },
-//     paused: { color: "bg-orange-400", text: "متوقف مؤقتاً", pulse: false },
-//   };
-
-//   const c = config[status];
-
-//   return (
-//     <div className="flex items-center gap-2">
-//       <div className="relative">
-//         <div className={"w-3 h-3 rounded-full " + c.color} />
-//         {c.pulse && (
-//           <div
-//             className={
-//               "absolute inset-0 w-3 h-3 rounded-full animate-ping " + c.color
-//             }
-//           />
-//         )}
-//       </div>
-//       <span className="text-sm text-emerald-200">{c.text}</span>
-//     </div>
-//   );
-// }
-
-// function ProgressRing({
-//   progress,
-//   size = 120,
-//   strokeWidth = 8,
-// }: {
-//   progress: number;
-//   size?: number;
-//   strokeWidth?: number;
-// }) {
-//   const radius = (size - strokeWidth) / 2;
-//   const circumference = radius * 2 * Math.PI;
-//   const offset =
-//     circumference - (Math.min(progress, 100) / 100) * circumference;
-//   const gradientId = "progressGradient_" + size;
-
-//   return (
-//     <svg width={size} height={size} className="transform -rotate-90">
-//       <circle
-//         cx={size / 2}
-//         cy={size / 2}
-//         r={radius}
-//         fill="none"
-//         stroke="rgba(255,255,255,0.1)"
-//         strokeWidth={strokeWidth}
-//       />
-//       <circle
-//         cx={size / 2}
-//         cy={size / 2}
-//         r={radius}
-//         fill="none"
-//         stroke={"url(#" + gradientId + ")"}
-//         strokeWidth={strokeWidth}
-//         strokeDasharray={circumference}
-//         strokeDashoffset={offset}
-//         strokeLinecap="round"
-//         className="transition-all duration-300"
-//       />
-//       <defs>
-//         <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
-//           <stop offset="0%" stopColor="#34d399" />
-//           <stop offset="100%" stopColor="#10b981" />
-//         </linearGradient>
-//       </defs>
-//     </svg>
-//   );
-// }
-
-// function DhikrSelector({
-//   dhikrList,
-//   selectedId,
-//   onSelect,
-//   disabled,
-// }: {
-//   dhikrList: DhikrItem[];
-//   selectedId: string;
-//   onSelect: (id: string) => void;
-//   disabled?: boolean;
-// }) {
-//   const categories: Record<string, string> = {
-//     tasbih: "التسبيح والتهليل",
-//     istighfar: "الاستغفار",
-//     salawat: "الصلاة على النبي",
-//     custom: "أذكار مخصصة",
-//   };
-
-//   const groupedDhikr = useMemo(() => {
-//     const groups: Record<string, DhikrItem[]> = {};
-//     for (const dhikr of dhikrList) {
-//       if (!groups[dhikr.category]) {
-//         groups[dhikr.category] = [];
-//       }
-//       groups[dhikr.category].push(dhikr);
-//     }
-//     return groups;
-//   }, [dhikrList]);
-
-//   return (
-//     <div className="space-y-2">
-//       <label className="block text-sm text-emerald-200">اختر الذكر</label>
-//       <select
-//         value={selectedId}
-//         onChange={(e) => onSelect(e.target.value)}
-//         disabled={disabled}
-//         className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white focus:ring-2 focus:ring-emerald-400 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-//       >
-//         {Object.entries(groupedDhikr).map(([category, items]) => (
-//           <optgroup
-//             key={category}
-//             label={categories[category] || category}
-//             className="bg-emerald-900"
-//           >
-//             {items.map((dhikr) => (
-//               <option
-//                 key={dhikr.id}
-//                 value={dhikr.id}
-//                 className="bg-emerald-900 text-white py-2"
-//               >
-//                 {dhikr.arabic}
-//               </option>
-//             ))}
-//           </optgroup>
-//         ))}
-//       </select>
-//     </div>
-//   );
-// }
-
-// function StatsPanel({
-//   stats,
-//   onClearHistory,
-// }: {
-//   stats: Stats;
-//   onClearHistory: () => void;
-// }) {
-//   const todaySessions = stats.sessions.filter((s) =>
-//     isSameDay(s.date, getToday())
-//   );
-//   const totalDuration = todaySessions.reduce((acc, s) => acc + s.duration, 0);
-
-//   return (
-//     <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 shadow-xl">
-//       <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-//         📊 الإحصائيات
-//       </h3>
-
-//       <div className="grid grid-cols-2 gap-4 mb-4">
-//         <div className="bg-white/5 rounded-lg p-3 text-center">
-//           <div className="text-2xl font-bold text-emerald-300">
-//             {stats.totalCount}
-//           </div>
-//           <div className="text-xs text-emerald-200">الإجمالي</div>
-//         </div>
-//         <div className="bg-white/5 rounded-lg p-3 text-center">
-//           <div className="text-2xl font-bold text-emerald-300">
-//             {stats.todayCount}
-//           </div>
-//           <div className="text-xs text-emerald-200">اليوم</div>
-//         </div>
-//         <div className="bg-white/5 rounded-lg p-3 text-center">
-//           <div className="text-2xl font-bold text-emerald-300">
-//             {stats.streak}
-//           </div>
-//           <div className="text-xs text-emerald-200">أيام متتالية 🔥</div>
-//         </div>
-//         <div className="bg-white/5 rounded-lg p-3 text-center">
-//           <div className="text-2xl font-bold text-emerald-300">
-//             {formatDuration(totalDuration)}
-//           </div>
-//           <div className="text-xs text-emerald-200">وقت اليوم</div>
-//         </div>
-//       </div>
-
-//       {todaySessions.length > 0 && (
-//         <div className="space-y-2">
-//           <div className="text-sm text-emerald-200 font-medium">جلسات اليوم</div>
-//           <div className="max-h-32 overflow-y-auto space-y-1">
-//             {todaySessions.slice(-5).map((session) => (
-//               <div
-//                 key={session.id}
-//                 className="flex justify-between items-center text-xs bg-white/5 rounded p-2"
-//               >
-//                 <span className="truncate max-w-[120px]">
-//                   {session.dhikrText}
-//                 </span>
-//                 <span className="text-emerald-300 font-medium">
-//                   {session.count}
-//                 </span>
-//               </div>
-//             ))}
-//           </div>
-//         </div>
-//       )}
-
-//       <button
-//         onClick={onClearHistory}
-//         className="mt-4 w-full px-3 py-2 text-sm rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
-//       >
-//         🗑️ مسح السجل
-//       </button>
-//     </div>
-//   );
-// }
-
-// function HelpSection() {
-//   const [isOpen, setIsOpen] = useState(false);
-
-//   return (
-//     <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 shadow-xl">
-//       <button
-//         onClick={() => setIsOpen(!isOpen)}
-//         className="w-full flex items-center justify-between font-bold text-lg"
-//       >
-//         <span className="flex items-center gap-2">❓ المساعدة</span>
-//         <span
-//           className={
-//             "transform transition-transform " + (isOpen ? "rotate-180" : "")
-//           }
-//         >
-//           ▼
-//         </span>
-//       </button>
-
-//       {isOpen && (
-//         <div className="mt-4 space-y-3 text-sm text-emerald-200">
-//           <div>
-//             <strong className="text-white">كيفية الاستخدام:</strong>
-//             <ol className="list-decimal list-inside mt-1 space-y-1">
-//               <li>اختر الذكر المراد قوله</li>
-//               <li>اضغط على زر ابدأ الاستماع</li>
-//               <li>ابدأ بترديد الذكر بصوت واضح</li>
-//               <li>سيتم عدّ كل مرة تقول فيها الذكر</li>
-//             </ol>
-//           </div>
-
-//           <div>
-//             <strong className="text-white">نصائح للأداء الأفضل:</strong>
-//             <ul className="list-disc list-inside mt-1 space-y-1">
-//               <li>تحدث بوضوح وبسرعة معتدلة</li>
-//               <li>تأكد من هدوء المكان قدر الإمكان</li>
-//               <li>استخدم سماعة رأس للحصول على نتائج أفضل</li>
-//               <li>أبقِ الهاتف قريباً منك</li>
-//             </ul>
-//           </div>
-
-//           <div>
-//             <strong className="text-white">ملاحظات:</strong>
-//             <ul className="list-disc list-inside mt-1 space-y-1">
-//               <li>يتم حفظ العداد تلقائياً</li>
-//               <li>يعمل على Chrome و Edge و Safari</li>
-//               <li>يحتاج اتصال بالإنترنت للتعرف على الصوت</li>
-//             </ul>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// }
-
-// // ============================================================================
-// // Main Component
-// // ============================================================================
-
-// export default function VoiceSubha() {
-//   const [selectedDhikrId, setSelectedDhikrId] = useState<string>(
-//     DEFAULT_DHIKR_LIST[0].id
-//   );
-//   const [sessionCount, setSessionCount] = useState(0);
-//   const [lastTranscript, setLastTranscript] = useState("");
-//   const [lastConfidence, setLastConfidence] = useState(0);
-//   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
-//   const [showCelebration, setShowCelebration] = useState(false);
-//   const [vibrationEnabled, setVibrationEnabled] = useState(true);
-//   const [soundEnabled, setSoundEnabled] = useState(false);
-
-//   const [stats, setStats] = useLocalStorage<Stats>(STORAGE_KEYS.STATS, {
-//     totalCount: 0,
-//     todayCount: 0,
-//     streak: 0,
-//     lastActiveDate: "",
-//     sessions: [],
-//   });
-
-//   const audioContextRef = useRef<AudioContext | null>(null);
-
-//   const selectedDhikr = useMemo(
-//     () =>
-//       DEFAULT_DHIKR_LIST.find((d) => d.id === selectedDhikrId) ||
-//       DEFAULT_DHIKR_LIST[0],
-//     [selectedDhikrId]
-//   );
-
-//   // IMPORTANT: Use ref to always have the latest selectedDhikr in the callback
-//   const selectedDhikrRef = useRef(selectedDhikr);
-//   // eslint-disable-next-line react-hooks/refs
-//   selectedDhikrRef.current = selectedDhikr;
-
-//   const progress = useMemo(() => {
-//     if (!selectedDhikr.targetCount) return 0;
-//     return (sessionCount / selectedDhikr.targetCount) * 100;
-//   }, [sessionCount, selectedDhikr.targetCount]);
-
-//   const { requestWakeLock, releaseWakeLock } = useWakeLock();
-
-//   const playBeep = useCallback(() => {
-//     if (!audioContextRef.current) {
-//       audioContextRef.current = new (window.AudioContext ||
-//         (window as any).webkitAudioContext)();
-//     }
-
-//     const ctx = audioContextRef.current;
-//     const oscillator = ctx.createOscillator();
-//     const gainNode = ctx.createGain();
-
-//     oscillator.connect(gainNode);
-//     gainNode.connect(ctx.destination);
-
-//     oscillator.frequency.value = 880;
-//     oscillator.type = "sine";
-
-//     gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-//     gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-
-//     oscillator.start(ctx.currentTime);
-//     oscillator.stop(ctx.currentTime + 0.1);
-//   }, []);
-
-//   const handleSpeechResult = useCallback(
-//     (transcript: string, confidence: number) => {
-//       setLastTranscript(transcript);
-//       setLastConfidence(confidence);
-
-//       // IMPORTANT: Use ref to get the current dhikr, not the closure value
-//       const currentDhikr = selectedDhikrRef.current;
-//       const matches = countOccurrences(transcript, currentDhikr.arabic);
-
-//       console.log("Speech Result:", {
-//         transcript,
-//         dhikr: currentDhikr.arabic,
-//         matches,
-//       });
-
-//       if (matches > 0) {
-//         setSessionCount((prev) => {
-//           const newCount = prev + matches;
-
-//           if (vibrationEnabled && navigator.vibrate) {
-//             navigator.vibrate(50);
-//           }
-
-//           if (soundEnabled) {
-//             playBeep();
-//           }
-
-//           if (
-//             currentDhikr.targetCount &&
-//             prev < currentDhikr.targetCount &&
-//             newCount >= currentDhikr.targetCount
-//           ) {
-//             setShowCelebration(true);
-//             if (navigator.vibrate) {
-//               navigator.vibrate([100, 50, 100, 50, 100]);
-//             }
-//             setTimeout(() => setShowCelebration(false), 3000);
-//           }
-
-//           return newCount;
-//         });
-
-//         setStats((prev) => {
-//           const today = getToday();
-//           const isNewDay = prev.lastActiveDate !== today;
-//           const isConsecutiveDay = isYesterday(prev.lastActiveDate);
-
-//           return {
-//             ...prev,
-//             totalCount: prev.totalCount + matches,
-//             todayCount: isNewDay ? matches : prev.todayCount + matches,
-//             streak: isNewDay
-//               ? isConsecutiveDay
-//                 ? prev.streak + 1
-//                 : 1
-//               : prev.streak,
-//             lastActiveDate: today,
-//           };
-//         });
-//       }
-//     },
-//     [vibrationEnabled, soundEnabled, setStats, playBeep]
-//   );
-
-//   const {
-//     supported,
-//     status,
-//     error,
-//     interimTranscript,
-//     isListening,
-//     start: startRecognition,
-//     stop: stopRecognition,
-//     restart: restartRecognition,
-//     clearError,
-//   } = useSpeechRecognition(handleSpeechResult, "ar-EG");
-
-//   const handleStart = useCallback(() => {
-//     clearError();
-//     setSessionStartTime(Date.now());
-//     startRecognition();
-//     requestWakeLock();
-//   }, [clearError, startRecognition, requestWakeLock]);
-
-//   const handleStop = useCallback(() => {
-//     stopRecognition();
-//     releaseWakeLock();
-
-//     const currentDhikr = selectedDhikrRef.current;
-
-//     if (sessionCount > 0 && sessionStartTime) {
-//       const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
-//       const session: SessionRecord = {
-//         id: generateId(),
-//         date: new Date().toISOString(),
-//         dhikrId: currentDhikr.id,
-//         dhikrText: currentDhikr.arabic,
-//         count: sessionCount,
-//         duration,
-//       };
-
-//       setStats((prev) => ({
-//         ...prev,
-//         sessions: [...prev.sessions.slice(-99), session],
-//       }));
-//     }
-
-//     setSessionStartTime(null);
-//   }, [
-//     stopRecognition,
-//     releaseWakeLock,
-//     sessionCount,
-//     sessionStartTime,
-//     setStats,
-//   ]);
-
-//   const toggleListening = useCallback(() => {
-//     if (isListening) {
-//       handleStop();
-//     } else {
-//       handleStart();
-//     }
-//   }, [isListening, handleStart, handleStop]);
-
-//   const resetSession = useCallback(() => {
-//     setSessionCount(0);
-//     setLastTranscript("");
-//     setLastConfidence(0);
-//   }, []);
-
-//   const clearHistory = useCallback(() => {
-//     if (confirm("هل أنت متأكد من مسح جميع السجلات؟")) {
-//       setStats({
-//         totalCount: 0,
-//         todayCount: 0,
-//         streak: 0,
-//         lastActiveDate: "",
-//         sessions: [],
-//       });
-//       resetSession();
-//     }
-//   }, [setStats, resetSession]);
-
-//   const handleDhikrChange = useCallback(
-//     (id: string) => {
-//       const wasListening = isListening;
-
-//       if (wasListening) {
-//         stopRecognition();
-//       }
-
-//       const currentDhikr = selectedDhikrRef.current;
-
-//       if (sessionCount > 0 && sessionStartTime) {
-//         const duration = Math.floor((Date.now() - sessionStartTime) / 1000);
-//         const session: SessionRecord = {
-//           id: generateId(),
-//           date: new Date().toISOString(),
-//           dhikrId: currentDhikr.id,
-//           dhikrText: currentDhikr.arabic,
-//           count: sessionCount,
-//           duration,
-//         };
-
-//         setStats((prev) => ({
-//           ...prev,
-//           sessions: [...prev.sessions.slice(-99), session],
-//         }));
-//       }
-
-//       setSelectedDhikrId(id);
-//       resetSession();
-
-//       if (wasListening) {
-//         setTimeout(() => {
-//           setSessionStartTime(Date.now());
-//           startRecognition();
-//         }, 200);
-//       }
-//     },
-//     [
-//       isListening,
-//       stopRecognition,
-//       sessionCount,
-//       sessionStartTime,
-//       setStats,
-//       resetSession,
-//       startRecognition,
-//     ]
-//   );
-
-//   // Unsupported browser
-//   if (!supported) {
-//     return (
-//       <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-cyan-900 text-white p-6 flex items-center justify-center">
-//         <div className="text-center max-w-md">
-//           <div className="text-6xl mb-6">🎤</div>
-//           <h2 className="text-2xl font-bold mb-4">
-//             المتصفح لا يدعم التعرف على الصوت
-//           </h2>
-//           <p className="text-emerald-200 mb-6">
-//             للاستفادة من هذه الميزة، يرجى استخدام أحد المتصفحات التالية:
-//           </p>
-//           <ul className="text-right space-y-2 bg-white/10 rounded-lg p-4">
-//             <li>• Google Chrome (موصى به)</li>
-//             <li>• Microsoft Edge</li>
-//             <li>• Safari (iOS/macOS)</li>
-//           </ul>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-gradient-to-br from-emerald-900 via-teal-900 to-cyan-900 text-white">
-//       {/* Celebration overlay */}
-//       {showCelebration && (
-//         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-pulse">
-//           <div className="text-center animate-bounce">
-//             <div className="text-8xl mb-4">🎉</div>
-//             <div className="text-3xl font-bold text-emerald-300">
-//               ما شاء الله!
-//             </div>
-//             <div className="text-xl text-emerald-200 mt-2">
-//               أتممت {selectedDhikr.targetCount} مرة
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//       <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
-//         {/* Header */}
-//         <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
-//           <div>
-//             <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-//               📿 السبحة الصوتية
-//             </h1>
-//             <p className="text-emerald-200 text-sm mt-1">عدّ أذكارك بصوتك</p>
-//           </div>
-//           <div className="flex items-center gap-3">
-//             <StatusIndicator status={status} />
-//             <span className="text-xs text-emerald-300 bg-emerald-800/50 px-2 py-1 rounded">
-//               حفظ تلقائي ✓
-//             </span>
-//           </div>
-//         </header>
-
-//         {/* Error banner */}
-//         {error && (
-//           <div className="mb-4 p-4 bg-red-500/20 border border-red-400/30 rounded-lg flex items-center justify-between">
-//             <span className="text-red-200">{error}</span>
-//             <button
-//               onClick={restartRecognition}
-//               className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-sm transition-colors"
-//             >
-//               إعادة المحاولة
-//             </button>
-//           </div>
-//         )}
-
-//         {/* Main content */}
-//         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-//           {/* Main panel */}
-//           <div className="lg:col-span-2 space-y-6">
-//             {/* Counter card */}
-//             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 shadow-2xl">
-//               <DhikrSelector
-//                 dhikrList={DEFAULT_DHIKR_LIST}
-//                 selectedId={selectedDhikrId}
-//                 onSelect={handleDhikrChange}
-//                 disabled={isListening}
-//               />
-
-//               {/* Selected dhikr info */}
-//               {selectedDhikr.meaning && (
-//                 <div className="mt-3 text-sm text-emerald-200 bg-white/5 rounded-lg p-3">
-//                   <div className="font-medium text-emerald-100">
-//                     {selectedDhikr.transliteration}
-//                   </div>
-//                   <div className="mt-1 text-emerald-300">
-//                     {selectedDhikr.meaning}
-//                   </div>
-//                 </div>
-//               )}
-
-//               {/* Counter display */}
-//               <div className="mt-8 flex flex-col items-center">
-//                 <div className="relative">
-//                   <ProgressRing progress={progress} size={160} strokeWidth={10} />
-//                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-//                     <div className="text-5xl md:text-6xl font-bold text-emerald-300">
-//                       {sessionCount}
-//                     </div>
-//                     {selectedDhikr.targetCount && (
-//                       <div className="text-sm text-emerald-200">
-//                         / {selectedDhikr.targetCount}
-//                       </div>
-//                     )}
-//                   </div>
-//                 </div>
-
-//                 {/* Manual counter */}
-//                 <div className="mt-4 flex items-center gap-3">
-//                   <button
-//                     onClick={() => setSessionCount((c) => Math.max(0, c - 1))}
-//                     className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-2xl transition-colors"
-//                   >
-//                     −
-//                   </button>
-//                   <button
-//                     onClick={() => setSessionCount((c) => c + 1)}
-//                     className="w-12 h-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-2xl transition-colors"
-//                   >
-//                     +
-//                   </button>
-//                 </div>
-//               </div>
-
-//               {/* Transcript display */}
-//               <div className="mt-6">
-//                 <div className="flex items-center justify-between mb-2">
-//                   <span className="text-sm text-emerald-200">
-//                     آخر ما تم سماعه:
-//                   </span>
-//                   {lastConfidence > 0 && (
-//                     <span className="text-xs text-emerald-300">
-//                       الدقة: {Math.round(lastConfidence * 100)}%
-//                     </span>
-//                   )}
-//                 </div>
-//                 <div className="bg-white/5 rounded-lg p-4 min-h-[80px]">
-//                   {interimTranscript && (
-//                     <div className="text-gray-400 italic mb-2">
-//                       {interimTranscript}
-//                     </div>
-//                   )}
-//                   {lastTranscript ? (
-//                     <div className="text-lg">{lastTranscript}</div>
-//                   ) : (
-//                     <div className="text-gray-400">
-//                       لم يتم التعرف على أي كلام بعد
-//                     </div>
-//                   )}
-//                 </div>
-//               </div>
-
-//               {/* Control buttons */}
-//               <div className="mt-6 flex flex-wrap gap-3">
-//                 <button
-//                   onClick={toggleListening}
-//                   className={
-//                     "flex-1 min-w-[200px] py-4 px-6 rounded-xl font-bold text-lg flex items-center justify-center gap-2 transition-all duration-200 " +
-//                     (isListening
-//                       ? "bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/25"
-//                       : "bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/25")
-//                   }
-//                 >
-//                   {isListening ? (
-//                     <>
-//                       <span className="text-2xl">⏸</span>
-//                       إيقاف الاستماع
-//                     </>
-//                   ) : (
-//                     <>
-//                       <span className="text-2xl">🎤</span>
-//                       ابدأ الاستماع
-//                     </>
-//                   )}
-//                 </button>
-
-//                 <button
-//                   onClick={resetSession}
-//                   className="py-4 px-6 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center gap-2"
-//                 >
-//                   🔄 إعادة ضبط
-//                 </button>
-//               </div>
-
-//               {/* Quick settings */}
-//               <div className="mt-4 flex flex-wrap gap-4 text-sm">
-//                 <label className="flex items-center gap-2 cursor-pointer">
-//                   <input
-//                     type="checkbox"
-//                     checked={vibrationEnabled}
-//                     onChange={(e) => setVibrationEnabled(e.target.checked)}
-//                     className="w-4 h-4 rounded bg-white/10 border-white/20"
-//                   />
-//                   <span className="text-emerald-200">اهتزاز عند العدّ</span>
-//                 </label>
-
-//                 <label className="flex items-center gap-2 cursor-pointer">
-//                   <input
-//                     type="checkbox"
-//                     checked={soundEnabled}
-//                     onChange={(e) => setSoundEnabled(e.target.checked)}
-//                     className="w-4 h-4 rounded bg-white/10 border-white/20"
-//                   />
-//                   <span className="text-emerald-200">صوت عند العدّ</span>
-//                 </label>
-//               </div>
-//             </div>
-
-//             {/* Tips */}
-//             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 shadow-xl">
-//               <div className="flex items-start gap-3">
-//                 <span className="text-2xl">💡</span>
-//                 <div className="text-sm text-emerald-200">
-//                   <strong className="text-white">نصيحة:</strong> تحدث بوضوح
-//                   وبسرعة معتدلة. التعرف على الكلام يعمل بشكل أفضل في مكان هادئ
-//                   وبميكروفون جيد.
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-
-//           {/* Sidebar */}
-//           <aside className="space-y-6">
-//             <StatsPanel stats={stats} onClearHistory={clearHistory} />
-//             <HelpSection />
-
-//             {/* Share button */}
-//             <button
-//               onClick={() => {
-//                 if (navigator?.share) {
-//                   navigator.share({
-//                     title: "السبحة الصوتية",
-//                     text:
-//                       "لقد ذكرت الله " +
-//                       stats.totalCount +
-//                       " مرة باستخدام السبحة الصوتية!",
-//                     url: window.location.href,
-//                   });
-//                 } else {
-//                   navigator.clipboard.writeText(window.location.href);
-//                   alert("تم نسخ الرابط!");
-//                 }
-//               }}
-//               className="w-full py-3 px-4 rounded-xl bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
-//             >
-//               📤 مشاركة التطبيق
-//             </button>
-
-//             {/* Settings info */}
-//             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-5 shadow-xl">
-//               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-//                 ⚙️ الإعدادات
-//               </h3>
-//               <div className="space-y-2 text-sm text-emerald-200">
-//                 <div className="flex justify-between">
-//                   <span>اللغة:</span>
-//                   <strong className="text-white">العربية (مصر)</strong>
-//                 </div>
-//                 <div className="flex justify-between">
-//                   <span>وضع الاستماع:</span>
-//                   <strong className="text-white">مستمر</strong>
-//                 </div>
-//                 <div className="flex justify-between">
-//                   <span>الحفظ:</span>
-//                   <strong className="text-white">تلقائي</strong>
-//                 </div>
-//               </div>
-//             </div>
-//           </aside>
-//         </div>
-
-//         {/* Footer */}
-//         <footer className="mt-8 text-center text-sm text-emerald-300/60">
-//           <p>اللهم تقبل منا ومنكم صالح الأعمال</p>
-//         </footer>
-//       </div>
-//     </div>
-//   );
-// }
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1410,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // Types & Interfaces
 // ============================================================================
 
-interface SpeechRecognition extends EventTarget {
+interface SpeechRecognitionInstance extends EventTarget {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -1418,8 +14,8 @@ interface SpeechRecognition extends EventTarget {
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((event: SpeechRecognitionEventType) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventType) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
   onspeechstart: (() => void) | null;
@@ -1428,32 +24,60 @@ interface SpeechRecognition extends EventTarget {
   onaudioend: (() => void) | null;
 }
 
-interface SpeechRecognitionEvent {
+interface SpeechRecognitionEventType {
   resultIndex: number;
-  results: SpeechRecognitionResultList;
+  results: SpeechRecognitionResultListType;
 }
 
-interface SpeechRecognitionResultList {
+interface SpeechRecognitionResultListType {
   length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
+  item(index: number): SpeechRecognitionResultType;
+  [index: number]: SpeechRecognitionResultType;
 }
 
-interface SpeechRecognitionResult {
+interface SpeechRecognitionResultType {
   isFinal: boolean;
   length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
+  item(index: number): SpeechRecognitionAlternativeType;
+  [index: number]: SpeechRecognitionAlternativeType;
 }
 
-interface SpeechRecognitionAlternative {
+interface SpeechRecognitionAlternativeType {
   transcript: string;
   confidence: number;
 }
 
-interface SpeechRecognitionErrorEvent extends Event {
+interface SpeechRecognitionErrorEventType extends Event {
   error: string;
   message: string;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognitionInstance;
+}
+
+interface WindowWithSpeechRecognition extends Window {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  webkitAudioContext?: typeof AudioContext;
+}
+
+interface WakeLockSentinelType {
+  release(): Promise<void>;
+  released: boolean;
+  type: "screen";
+  onrelease: ((event: Event) => void) | null;
+}
+
+interface NavigatorWithWakeLock {
+  wakeLock?: {
+    request(type: "screen"): Promise<WakeLockSentinelType>;
+  };
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
 interface DhikrItem {
@@ -1485,7 +109,7 @@ interface Stats {
 
 interface ReminderSettings {
   enabled: boolean;
-  times: string[]; // Array of times like ["08:00", "12:00", "18:00"]
+  times: string[];
   lastNotificationDate?: string;
 }
 
@@ -1585,9 +209,10 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const RECOGNITION_CONFIG = {
-  RESTART_DELAY: 100,
-  MAX_RESTART_ATTEMPTS: 5,
-  RESTART_BACKOFF_MS: 1000,
+  RESTART_DELAY: 50,
+  MAX_RESTART_ATTEMPTS: 10,
+  RESTART_BACKOFF_MS: 500,
+  DEBOUNCE_MS: 300,
 } as const;
 
 // ============================================================================
@@ -1614,21 +239,26 @@ function countOccurrences(text: string, target: string): number {
   const normalizedText = normalizeArabic(text);
   const normalizedTarget = normalizeArabic(target);
 
-  let count = 0;
-  let pos = 0;
-  while (true) {
-    const index = normalizedText.indexOf(normalizedTarget, pos);
-    if (index === -1) break;
-    count++;
-    pos = index + 1;
+  // For short dhikr (like "سبحان الله"), use exact matching
+  const targetWords = normalizedTarget.split(" ").filter(Boolean);
+  
+  if (targetWords.length <= 3) {
+    // Count non-overlapping exact matches
+    let count = 0;
+    let pos = 0;
+    while (true) {
+      const index = normalizedText.indexOf(normalizedTarget, pos);
+      if (index === -1) break;
+      count++;
+      // Move past this match completely to avoid double counting
+      pos = index + normalizedTarget.length;
+    }
+    return count;
   }
 
-  if (count === 0) {
-    const similarity = calculateSimilarity(normalizedText, normalizedTarget);
-    if (similarity > 0.7) count = 1;
-  }
-
-  return count;
+  // For longer dhikr, use similarity matching
+  const similarity = calculateSimilarity(normalizedText, normalizedTarget);
+  return similarity > 0.6 ? 1 : 0;
 }
 
 function calculateSimilarity(str1: string, str2: string): number {
@@ -1684,7 +314,6 @@ function useLocalStorage<T>(
     try {
       const item = localStorage.getItem(key);
       if (item) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setStoredValue(JSON.parse(item));
       }
     } catch (error) {
@@ -1708,7 +337,7 @@ function useLocalStorage<T>(
     [key]
   );
 
-  return [isHydrated ? storedValue : initialValue, setValue, isHydrated];
+  return [storedValue, setValue, isHydrated];
 }
 
 function useTheme() {
@@ -1717,8 +346,15 @@ function useTheme() {
     "dark"
   );
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     const updateResolvedTheme = () => {
       if (theme === "system") {
         const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -1734,22 +370,24 @@ function useTheme() {
     mediaQuery.addEventListener("change", updateResolvedTheme);
 
     return () => mediaQuery.removeEventListener("change", updateResolvedTheme);
-  }, [theme]);
+  }, [theme, mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.classList.add(resolvedTheme);
-  }, [resolvedTheme]);
+  }, [resolvedTheme, mounted]);
 
-  return { theme, setTheme, resolvedTheme };
+  return { theme, setTheme, resolvedTheme, mounted };
 }
 
 function useNotifications() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [isSupported, setIsSupported] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
     setIsSupported("Notification" in window);
     if ("Notification" in window) {
       setPermission(Notification.permission);
@@ -1801,7 +439,6 @@ function useNotifications() {
       if (!isSupported || permission !== "granted") return;
 
       const now = new Date();
-      const today = now.toDateString();
 
       times.forEach((time) => {
         const [hours, minutes] = time.split(":").map(Number);
@@ -1815,7 +452,6 @@ function useNotifications() {
             sendNotification("📿 وقت الأذكار", {
               body: "حان وقت ذكر الله. اللهم اجعلنا من الذاكرين.",
               tag: "dhikr-reminder-" + time,
-              // renotify: true,
             });
           }, delay);
         }
@@ -1825,7 +461,7 @@ function useNotifications() {
   );
 
   return {
-    isSupported,
+    isSupported: mounted && isSupported,
     permission,
     requestPermission,
     sendNotification,
@@ -1834,14 +470,13 @@ function useNotifications() {
 }
 
 function useWakeLock() {
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinelType | null>(null);
 
   const requestWakeLock = useCallback(async () => {
-    if ("wakeLock" in navigator) {
+    const nav = navigator as NavigatorWithWakeLock;
+    if (nav.wakeLock) {
       try {
-        wakeLockRef.current = await (navigator as any).wakeLock.request(
-          "screen"
-        );
+        wakeLockRef.current = await nav.wakeLock.request("screen");
       } catch (err) {
         console.warn("Wake Lock failed:", err);
       }
@@ -1882,22 +517,27 @@ function useSpeechRecognition(
   const [status, setStatus] = useState<RecognitionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const [mounted, setMounted] = useState(false);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const isListeningRef = useRef(false);
   const restartAttemptsRef = useRef(0);
   const restartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processedTranscriptsRef = useRef<Set<string>>(new Set());
+  const lastProcessedTimeRef = useRef<number>(0);
 
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  const supported = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return !!(
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition
-    );
+  useEffect(() => {
+    setMounted(true);
   }, []);
+
+  const supported = useMemo(() => {
+    if (!mounted) return false;
+    const win = window as WindowWithSpeechRecognition;
+    return !!(win.SpeechRecognition || win.webkitSpeechRecognition);
+  }, [mounted]);
 
   const cleanup = useCallback(() => {
     if (restartTimeoutRef.current) {
@@ -1907,22 +547,21 @@ function useSpeechRecognition(
   }, []);
 
   const createRecognition = useCallback(() => {
-    if (typeof window === "undefined") return null;
-
-    const SpeechRecognitionAPI =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
+    if (!mounted) return null;
+    
+    const win = window as WindowWithSpeechRecognition;
+    const SpeechRecognitionAPI = win.SpeechRecognition || win.webkitSpeechRecognition;
 
     if (!SpeechRecognitionAPI) return null;
 
-    const recognition: SpeechRecognition = new SpeechRecognitionAPI();
+    const recognition: SpeechRecognitionInstance = new SpeechRecognitionAPI();
     recognition.lang = language;
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.maxAlternatives = 3;
+    recognition.maxAlternatives = 1;
 
     return recognition;
-  }, [language]);
+  }, [language, mounted]);
 
   const scheduleRestart = useCallback(() => {
     if (!isListeningRef.current) return;
@@ -1971,16 +610,37 @@ function useSpeechRecognition(
       }
     };
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechRecognitionEventType) => {
       let interimText = "";
+      const now = Date.now();
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        const transcript = result[0].transcript;
+        const transcript = result[0].transcript.trim();
 
-        if (result.isFinal) {
+        if (result.isFinal && transcript) {
+          // Debounce: prevent processing the same or similar transcript too quickly
+          const timeSinceLastProcess = now - lastProcessedTimeRef.current;
+          
+          if (timeSinceLastProcess < RECOGNITION_CONFIG.DEBOUNCE_MS) {
+            // Check if this is likely a duplicate
+            const normalizedTranscript = normalizeArabic(transcript);
+            if (processedTranscriptsRef.current.has(normalizedTranscript)) {
+              continue;
+            }
+          }
+          
+          // Clear old transcripts after debounce period
+          if (timeSinceLastProcess > RECOGNITION_CONFIG.DEBOUNCE_MS * 2) {
+            processedTranscriptsRef.current.clear();
+          }
+          
+          const normalizedTranscript = normalizeArabic(transcript);
+          processedTranscriptsRef.current.add(normalizedTranscript);
+          lastProcessedTimeRef.current = now;
+          
           onResultRef.current(transcript, result[0].confidence);
-        } else {
+        } else if (!result.isFinal) {
           interimText += transcript;
         }
       }
@@ -1988,7 +648,7 @@ function useSpeechRecognition(
       setInterimTranscript(interimText);
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEventType) => {
       console.error("Speech error:", event.error);
 
       switch (event.error) {
@@ -2002,6 +662,7 @@ function useSpeechRecognition(
           isListeningRef.current = false;
           return;
         case "no-speech":
+          // Don't show error, just restart silently
           if (isListeningRef.current) scheduleRestart();
           return;
         case "aborted":
@@ -2010,6 +671,10 @@ function useSpeechRecognition(
           setError("لا يمكن الوصول للميكروفون.");
           break;
         default:
+          if (isListeningRef.current) {
+            scheduleRestart();
+            return;
+          }
           setError("خطأ: " + event.error);
       }
 
@@ -2041,6 +706,8 @@ function useSpeechRecognition(
     cleanup();
     isListeningRef.current = true;
     restartAttemptsRef.current = 0;
+    processedTranscriptsRef.current.clear();
+    lastProcessedTimeRef.current = 0;
 
     if (!recognitionRef.current) {
       setupRecognition();
@@ -2050,8 +717,9 @@ function useSpeechRecognition(
       try {
         setStatus("starting");
         recognitionRef.current.start();
-      } catch (e: any) {
-        if (e.name !== "InvalidStateError") {
+      } catch (e: unknown) {
+        const err = e as { name?: string };
+        if (err.name !== "InvalidStateError") {
           console.error("Start failed:", e);
           setError("فشل في بدء التعرف على الصوت");
         }
@@ -2077,7 +745,7 @@ function useSpeechRecognition(
 
   const restart = useCallback(() => {
     stop();
-    setTimeout(start, 500);
+    setTimeout(start, 300);
   }, [stop, start]);
 
   useEffect(() => {
@@ -2095,6 +763,8 @@ function useSpeechRecognition(
   }, [cleanup]);
 
   useEffect(() => {
+    if (!mounted) return;
+    
     const handleVisibility = () => {
       if (document.visibilityState === "visible" && isListeningRef.current) {
         if (status !== "listening" && status !== "processing") {
@@ -2107,9 +777,11 @@ function useSpeechRecognition(
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [status, restart]);
+  }, [status, restart, mounted]);
 
   useEffect(() => {
+    if (!mounted) return;
+    
     if (recognitionRef.current) {
       const wasListening = isListeningRef.current;
       stop();
@@ -2119,11 +791,10 @@ function useSpeechRecognition(
         setTimeout(start, 100);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  }, [language, mounted, setupRecognition, start, stop]);
 
   return {
-    supported,
+    supported: mounted && supported,
     status,
     error,
     interimTranscript,
@@ -2485,7 +1156,7 @@ function CustomDhikrManager({
   );
 }
 
-function ReminderSettings({
+function ReminderSettingsPanel({
   settings,
   onUpdate,
   notificationPermission,
@@ -2715,20 +1386,21 @@ function HelpSection() {
 
 function InstallPWAPrompt() {
   const [showPrompt, setShowPrompt] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    
     const handler = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowPrompt(true);
     };
 
     window.addEventListener("beforeinstallprompt", handler);
 
-    // Check if already installed
     if (window.matchMedia("(display-mode: standalone)").matches) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowPrompt(false);
     }
 
@@ -2747,7 +1419,7 @@ function InstallPWAPrompt() {
     setDeferredPrompt(null);
   };
 
-  if (!showPrompt) return null;
+  if (!mounted || !showPrompt) return null;
 
   return (
     <div className="bg-emerald-500/20 border border-emerald-400/30 rounded-xl p-4 mb-4">
@@ -2780,13 +1452,47 @@ function InstallPWAPrompt() {
   );
 }
 
+// Loading Skeleton Component
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+      <div className="max-w-6xl mx-auto p-4 md:p-6 lg:p-8">
+        <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+              📿 السبحة الصوتية
+            </h1>
+            <p className="opacity-60 text-sm mt-1">عدّ أذكارك بصوتك</p>
+          </div>
+        </header>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <div className="backdrop-blur-sm rounded-2xl p-6 shadow-2xl bg-white/10 animate-pulse">
+              <div className="h-12 bg-white/20 rounded-lg mb-4" />
+              <div className="flex flex-col items-center mt-8">
+                <div className="w-40 h-40 rounded-full bg-white/20" />
+              </div>
+              <div className="mt-6 h-24 bg-white/20 rounded-lg" />
+              <div className="mt-6 h-14 bg-white/20 rounded-xl" />
+            </div>
+          </div>
+          <aside className="space-y-6">
+            <div className="bg-white/10 rounded-xl p-5 h-48 animate-pulse" />
+            <div className="bg-white/10 rounded-xl p-5 h-32 animate-pulse" />
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
 
 export default function VoiceSubha() {
   // Theme
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme, mounted } = useTheme();
   const isDark = resolvedTheme === "dark";
 
   // Custom Dhikr
@@ -2838,7 +1544,6 @@ export default function VoiceSubha() {
   );
 
   const selectedDhikrRef = useRef(selectedDhikr);
-  // eslint-disable-next-line react-hooks/refs
   selectedDhikrRef.current = selectedDhikr;
 
   // Progress
@@ -2850,7 +1555,6 @@ export default function VoiceSubha() {
   // Hooks
   const { requestWakeLock, releaseWakeLock } = useWakeLock();
   const {
-    isSupported: notificationsSupported,
     permission: notificationPermission,
     requestPermission: requestNotificationPermission,
     scheduleReminder,
@@ -2865,12 +1569,18 @@ export default function VoiceSubha() {
 
   // Play beep sound
   const playBeep = useCallback(() => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+    if (typeof window === "undefined") return;
+    
+    const win = window as WindowWithSpeechRecognition;
+    const AudioContextClass = window.AudioContext || win.webkitAudioContext;
+    
+    if (!audioContextRef.current && AudioContextClass) {
+      audioContextRef.current = new AudioContextClass();
     }
 
     const ctx = audioContextRef.current;
+    if (!ctx) return;
+    
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
 
@@ -3013,7 +1723,7 @@ export default function VoiceSubha() {
   }, []);
 
   const clearHistory = useCallback(() => {
-    if (confirm("هل أنت متأكد من مسح جميع السجلات؟")) {
+    if (typeof window !== "undefined" && confirm("هل أنت متأكد من مسح جميع السجلات؟")) {
       setStats({
         totalCount: 0,
         todayCount: 0,
@@ -3083,7 +1793,7 @@ export default function VoiceSubha() {
 
   const handleDeleteCustomDhikr = useCallback(
     (id: string) => {
-      if (confirm("هل أنت متأكد من حذف هذا الذكر؟")) {
+      if (typeof window !== "undefined" && confirm("هل أنت متأكد من حذف هذا الذكر؟")) {
         setCustomDhikrList((prev) => prev.filter((d) => d.id !== id));
         if (selectedDhikrId === id) {
           setSelectedDhikrId(DEFAULT_DHIKR_LIST[0].id);
@@ -3092,6 +1802,11 @@ export default function VoiceSubha() {
     },
     [setCustomDhikrList, selectedDhikrId]
   );
+
+  // Show loading skeleton until mounted
+  if (!mounted) {
+    return <LoadingSkeleton />;
+  }
 
   // Unsupported browser
   if (!supported) {
@@ -3409,7 +2124,7 @@ export default function VoiceSubha() {
               onAddClick={() => setShowAddDhikrModal(true)}
             />
 
-            <ReminderSettings
+            <ReminderSettingsPanel
               settings={settings.reminders}
               onUpdate={(reminders) =>
                 setSettings((prev) => ({ ...prev, reminders }))
